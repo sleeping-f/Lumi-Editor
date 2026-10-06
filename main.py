@@ -35,7 +35,7 @@ except Exception:
     pass
 
 
-from theme import COLORS, FONTS, apply_theme, ToolTip
+from theme import COLORS, FONTS, apply_theme, get_theme_mode, toggle_theme, ToolTip
 from tabs.crop_tab import CropTab
 from tabs.logo_tab import LogoTab
 from core.updater import CURRENT_VERSION, UpdateDialog
@@ -114,60 +114,146 @@ class LumiEditorApp:
     #  HEADER  (dark banner with logo + branding)
     # ───────────────────────────────────────────────────────────────
 
+    def _get_header_logo(self) -> ImageTk.PhotoImage:
+        """
+        Load the 25% bigger (50x50) logo and alpha-composite directly onto the
+        exact navbar background color for 100% seamless blending without edge boxes.
+        """
+        mode = get_theme_mode()
+        asset_name = "logo_navbar_dark.png" if mode == "dark" else "logo_navbar_light.png"
+        logo_path = resource_path(os.path.join("assets", asset_name))
+        if not os.path.isfile(logo_path):
+            logo_path = resource_path(os.path.join("assets", "logo.png"))
+
+        try:
+            img = Image.open(logo_path).convert("RGBA")
+            img = img.resize((50, 50), Image.Resampling.LANCZOS)
+
+            bg_hex = COLORS["bg_navbar"]
+            bg_canvas = Image.new("RGBA", (50, 50), bg_hex)
+            bg_canvas.alpha_composite(img)
+            return ImageTk.PhotoImage(bg_canvas)
+        except Exception:
+            fallback = Image.new("RGBA", (50, 50), COLORS["bg_navbar"])
+            return ImageTk.PhotoImage(fallback)
+
     def _build_header(self):
-        header = tk.Frame(self.root, bg=COLORS["bg_dark"], height=60)
+        # Header banner (spacious height 68 to comfortably frame the 50x50 logo)
+        header = tk.Frame(self.root, bg=COLORS["bg_navbar"], height=68)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
+        self._header_frame = header
 
-        # Logo thumbnail
-        logo_path = resource_path(os.path.join("assets", "logo.png"))
-        if os.path.isfile(logo_path):
-            try:
-                logo = Image.open(logo_path)
-                logo.thumbnail((40, 40), Image.Resampling.LANCZOS)
-                self._header_logo = ImageTk.PhotoImage(logo)
-                tk.Label(header, image=self._header_logo,
-                         bg=COLORS["bg_dark"]).pack(
-                    side="left", padx=(20, 12), pady=10)
-            except Exception:
-                pass
+        # 25% Bigger Logo (50x50), blended seamlessly into navbar
+        self._header_logo = self._get_header_logo()
+        self._logo_label = tk.Label(
+            header,
+            image=self._header_logo,
+            bg=COLORS["bg_navbar"]
+        )
+        self._logo_label.pack(side="left", padx=(20, 14), pady=9)
 
         # Title
-        tk.Label(
+        self._title_label = tk.Label(
             header, text="Lumi Editor",
             font=FONTS["title"],
             fg=COLORS["text_on_dark"],
-            bg=COLORS["bg_dark"],
-        ).pack(side="left", pady=(10, 10))
+            bg=COLORS["bg_navbar"],
+        )
+        self._title_label.pack(side="left", pady=(14, 14))
 
         # Tagline
-        tk.Label(
+        self._tagline_label = tk.Label(
             header, text="Batch Edit. Simplified.",
             font=FONTS["tagline"],
             fg=COLORS["accent"],
-            bg=COLORS["bg_dark"],
-        ).pack(side="left", padx=(10, 0), pady=(12, 10))
+            bg=COLORS["bg_navbar"],
+        )
+        self._tagline_label.pack(side="left", padx=(10, 0), pady=(16, 14))
 
-        # Right side: Update button in header
-        update_btn = tk.Button(
-            header,
+        # Right side controls: Check Updates + Theme Toggle
+        btn_container = tk.Frame(header, bg=COLORS["bg_navbar"])
+        btn_container.pack(side="right", padx=16, pady=14)
+        self._header_btn_container = btn_container
+
+        # 1. Update button
+        self._update_btn = tk.Button(
+            btn_container,
             text="✨ Check Updates",
             font=FONTS["button_small"],
-            bg=COLORS["bg_darker"],
+            bg=COLORS["bg_hover"],
             fg=COLORS["accent"],
             activebackground=COLORS["accent"],
-            activeforeground=COLORS["bg_darker"],
+            activeforeground=COLORS["text_on_accent"],
             relief="flat",
-            padx=10, pady=4,
+            padx=12, pady=5,
             cursor="hand2",
             command=self._open_updater
         )
-        update_btn.pack(side="right", padx=16, pady=12)
-        ToolTip(update_btn, "Check for new versions and software updates")
+        self._update_btn.pack(side="right")
+        ToolTip(self._update_btn, "Check for new versions and software updates")
 
-        # Gold accent line under header
-        accent_bar = tk.Frame(self.root, bg=COLORS["accent"], height=3)
-        accent_bar.pack(fill="x", side="top")
+        # 2. Theme Toggle button (Dark by default -> shows option to switch to Light)
+        initial_theme_text = "☀️  Light" if get_theme_mode() == "dark" else "🌙  Dark"
+        self._theme_btn = tk.Button(
+            btn_container,
+            text=initial_theme_text,
+            font=FONTS["button_small"],
+            bg=COLORS["bg_hover"],
+            fg=COLORS["text_primary"],
+            activebackground=COLORS["accent"],
+            activeforeground=COLORS["text_on_accent"],
+            relief="flat",
+            padx=12, pady=5,
+            cursor="hand2",
+            command=self._toggle_theme
+        )
+        self._theme_btn.pack(side="right", padx=(0, 10))
+        ToolTip(self._theme_btn, "Toggle between Dark and Light mode")
+
+        # Signature accent bar under header
+        self._accent_bar = tk.Frame(self.root, bg=COLORS["accent_bar"], height=2)
+        self._accent_bar.pack(fill="x", side="top")
+
+    def _toggle_theme(self):
+        """Toggle application between dark and light themes smoothly."""
+        new_mode = toggle_theme(self.root)
+
+        # Update header
+        self._header_frame.configure(bg=COLORS["bg_navbar"])
+        self._header_btn_container.configure(bg=COLORS["bg_navbar"])
+
+        self._header_logo = self._get_header_logo()
+        self._logo_label.configure(image=self._header_logo, bg=COLORS["bg_navbar"])
+        self._title_label.configure(fg=COLORS["text_on_dark"], bg=COLORS["bg_navbar"])
+        self._tagline_label.configure(fg=COLORS["accent"], bg=COLORS["bg_navbar"])
+
+        theme_text = "☀️  Light" if new_mode == "dark" else "🌙  Dark"
+        self._theme_btn.configure(
+            text=theme_text,
+            bg=COLORS["bg_hover"],
+            fg=COLORS["text_primary"],
+            activebackground=COLORS["accent"],
+            activeforeground=COLORS["text_on_accent"]
+        )
+        self._update_btn.configure(
+            bg=COLORS["bg_hover"],
+            fg=COLORS["accent"],
+            activebackground=COLORS["accent"],
+            activeforeground=COLORS["text_on_accent"]
+        )
+        self._accent_bar.configure(bg=COLORS["accent_bar"])
+
+        # Update footer
+        self._footer.configure(bg=COLORS["bg_hover"])
+        self._footer_credits.configure(bg=COLORS["bg_hover"], fg=COLORS["text_muted"])
+        self._footer_version.configure(bg=COLORS["bg_hover"], fg=COLORS["accent"])
+
+        # Update tabs canvases
+        if hasattr(self, "crop_tab"):
+            self.crop_tab.update_theme()
+        if hasattr(self, "logo_tab"):
+            self.logo_tab.update_theme()
 
     # ───────────────────────────────────────────────────────────────
     #  TABBED CONTENT AREA
@@ -193,16 +279,18 @@ class LumiEditorApp:
         footer = tk.Frame(self.root, bg=COLORS["bg_hover"], height=28)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
+        self._footer = footer
 
-        tk.Label(
+        self._footer_credits = tk.Label(
             footer,
             text="Lumi Editor  •  Developed by Md. Farhan Sadique  •  Batch Edit. Simplified.",
             font=("Segoe UI", 8),
             fg=COLORS["text_muted"],
             bg=COLORS["bg_hover"],
-        ).pack(side="left", padx=16, pady=6)
+        )
+        self._footer_credits.pack(side="left", padx=16, pady=6)
 
-        ver_lbl = tk.Label(
+        self._footer_version = tk.Label(
             footer,
             text=f"v{CURRENT_VERSION}",
             font=("Segoe UI", 8, "bold"),
@@ -210,9 +298,9 @@ class LumiEditorApp:
             bg=COLORS["bg_hover"],
             cursor="hand2",
         )
-        ver_lbl.pack(side="right", padx=16, pady=6)
-        ver_lbl.bind("<Button-1>", lambda e: self._open_updater())
-        ToolTip(ver_lbl, "Click to check for updates")
+        self._footer_version.pack(side="right", padx=16, pady=6)
+        self._footer_version.bind("<Button-1>", lambda e: self._open_updater())
+        ToolTip(self._footer_version, "Click to check for updates")
 
     def _open_updater(self):
         """Open the update manager dialog."""

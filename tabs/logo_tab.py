@@ -54,6 +54,7 @@ class LogoTab(ttk.Frame):
     def _build_ui(self):
         # Scrollable container supporting mouse wheel on any screen resolution
         canvas = tk.Canvas(self, bg=COLORS["bg_primary"], highlightthickness=0)
+        self._scroll_canvas = canvas
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas, style="TFrame")
 
@@ -603,3 +604,8 @@ class LogoTab(ttk.Frame):
         state = "normal" if enabled else "disabled"
         self._preview_btn.configure(state=state)
         self._start_btn.configure(state=state)
+
+    def update_theme(self):
+        """Update canvas background when toggling dark/light theme."""
+        if hasattr(self, "_scroll_canvas"):
+            self._scroll_canvas.configure(bg=COLORS["bg_primary"])

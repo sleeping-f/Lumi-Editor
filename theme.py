@@ -9,51 +9,127 @@ from tkinter import ttk
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  COLOR PALETTE
+#  COLOR PALETTES (DARK & LIGHT)
 # ═══════════════════════════════════════════════════════════════════
 
-COLORS = {
+DARK_COLORS = {
     # ── Backgrounds ──────────────────────────────────────────────
-    "bg_primary":     "#f4f4f8",      # main window
-    "bg_secondary":   "#ffffff",      # cards / panels
-    "bg_dark":        "#2d2d3f",      # header, dark buttons
-    "bg_darker":      "#1e1e2e",      # deeper dark
-    "bg_input":       "#ffffff",      # input fields
-    "bg_hover":       "#eaeaf0",      # hover state
+    "bg_primary":     "#121218",      # main window background (deep obsidian)
+    "bg_secondary":   "#1b1b26",      # cards / panels (elevated charcoal)
+    "bg_navbar":      "#151520",      # top navigation bar (sleek dark)
+    "bg_dark":        "#151520",      # header
+    "bg_darker":      "#0e0e16",      # deeper contrast
+    "bg_input":       "#171724",      # entry / spinbox field background
+    "bg_hover":       "#262638",      # hover state on dark surfaces
 
-    # ── Accent (warm gold from logo) ─────────────────────────────
-    "accent":         "#c9a84c",
-    "accent_hover":   "#b89840",
-    "accent_light":   "#f5ecd4",
-    "accent_subtle":  "#ede3c8",
+    # ── Accent (warm luminous gold from brand) ───────────────────
+    "accent":         "#d4af37",      # radiant gold
+    "accent_hover":   "#e2bc52",      # brighter gold on hover
+    "accent_light":   "#2a2414",      # subtle dark gold tint
+    "accent_subtle":  "#221d10",      # very subtle dark gold
+    "accent_bar":     "#d4af37",      # divider under navbar
 
     # ── Text ─────────────────────────────────────────────────────
-    "text_primary":   "#2d2d3f",
-    "text_secondary": "#6b6b80",
-    "text_muted":     "#9e9eb0",
-    "text_disabled":  "#b8b8c8",
-    "text_on_dark":   "#f0f0f5",
-    "text_on_accent": "#2d2d3f",
+    "text_primary":   "#f3f3f8",      # high contrast crisp text
+    "text_secondary": "#a2a2b8",      # comfortable secondary text
+    "text_muted":     "#6f6f86",      # hints, captions
+    "text_disabled":  "#4a4a62",      # disabled controls
+    "text_on_dark":   "#f3f3f8",      # text on navbar
+    "text_on_accent": "#121218",      # text on gold buttons
 
     # ── Borders ──────────────────────────────────────────────────
-    "border":         "#e0e0e8",
-    "border_focus":   "#c9a84c",
+    "border":         "#2d2d3e",      # clean hairline borders
+    "border_focus":   "#d4af37",      # radiant gold focus ring
 
     # ── Status ───────────────────────────────────────────────────
-    "success":        "#4caf50",
+    "success":        "#4ade80",      # modern emerald green
+    "success_bg":     "#12281a",      # dark green tint
+    "error":          "#f87171",      # modern coral red
+    "error_bg":       "#2d1416",      # dark red tint
+
+    # ── Progress bar ─────────────────────────────────────────────
+    "progress_bg":    "#242436",
+    "progress_fill":  "#d4af37",
+
+    # ── Tabs ─────────────────────────────────────────────────────
+    "tab_bg":         "#171724",      # inactive tabs
+    "tab_selected":   "#1b1b26",      # active tab matches card surface
+    "tab_hover":      "#242436",      # tab hover
+}
+
+LIGHT_COLORS = {
+    # ── Backgrounds ──────────────────────────────────────────────
+    "bg_primary":     "#f5f5f9",      # main window
+    "bg_secondary":   "#ffffff",      # cards / panels
+    "bg_navbar":      "#ffffff",      # navbar background (EXACT LOGO WHITE so it blends!)
+    "bg_dark":        "#ffffff",      # header is white
+    "bg_darker":      "#f0f0f5",      # subtle light contrast
+    "bg_input":       "#ffffff",      # input fields
+    "bg_hover":       "#eaeaf2",      # hover state
+
+    # ── Accent (warm gold from logo) ─────────────────────────────
+    "accent":         "#c9a84c",      # warm gold
+    "accent_hover":   "#b89840",      # deeper gold on hover
+    "accent_light":   "#f7f0dc",      # soft champagne tint
+    "accent_subtle":  "#fbf7ed",      # subtle warm tint
+    "accent_bar":     "#c9a84c",      # 2px divider under navbar
+
+    # ── Text ─────────────────────────────────────────────────────
+    "text_primary":   "#1e1e2e",      # dark charcoal primary text
+    "text_secondary": "#5a5a72",      # readable secondary text
+    "text_muted":     "#8c8ca0",      # hints / captions
+    "text_disabled":  "#b4b4c4",      # disabled text
+    "text_on_dark":   "#1e1e2e",      # dark text on white navbar
+    "text_on_accent": "#1e1e2e",
+
+    # ── Borders ──────────────────────────────────────────────────
+    "border":         "#e2e2ec",      # soft subtle border
+    "border_focus":   "#c9a84c",      # gold focus ring
+
+    # ── Status ───────────────────────────────────────────────────
+    "success":        "#2e7d32",
     "success_bg":     "#e8f5e9",
-    "error":          "#ef5350",
+    "error":          "#c62828",
     "error_bg":       "#ffebee",
 
     # ── Progress bar ─────────────────────────────────────────────
-    "progress_bg":    "#e0e0e8",
+    "progress_bg":    "#e2e2ec",
     "progress_fill":  "#c9a84c",
 
     # ── Tabs ─────────────────────────────────────────────────────
-    "tab_bg":         "#eaeaf0",
+    "tab_bg":         "#eaeaf2",
     "tab_selected":   "#ffffff",
-    "tab_hover":      "#d8d8e2",
+    "tab_hover":      "#dedee8",
 }
+
+CURRENT_THEME = "dark"
+COLORS = dict(DARK_COLORS)
+
+
+def get_theme_mode() -> str:
+    """Return active theme mode: 'dark' or 'light'."""
+    return CURRENT_THEME
+
+
+def set_theme_mode(mode: str) -> None:
+    """Set active theme dictionary and state."""
+    global CURRENT_THEME
+    CURRENT_THEME = "light" if mode == "light" else "dark"
+    if CURRENT_THEME == "light":
+        COLORS.clear()
+        COLORS.update(LIGHT_COLORS)
+    else:
+        COLORS.clear()
+        COLORS.update(DARK_COLORS)
+
+
+def toggle_theme(root: tk.Tk) -> str:
+    """Toggle between dark and light mode, reapplying styles."""
+    new_mode = "light" if CURRENT_THEME == "dark" else "dark"
+    set_theme_mode(new_mode)
+    apply_theme(root, mode=new_mode)
+    return new_mode
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  FONT STACK  (Segoe UI — native Windows; falls back gracefully)
@@ -78,18 +154,24 @@ FONTS = {
 #  THEME APPLICATION
 # ═══════════════════════════════════════════════════════════════════
 
-def apply_theme(root: tk.Tk) -> ttk.Style:
+def apply_theme(root: tk.Tk, mode: str = None) -> ttk.Style:
     """
-    Apply the Lumi Editor custom theme on top of the 'clam' base.
-    Call this once, immediately after creating the root window.
+    Apply the Lumi Editor theme (Dark Mode by default).
+    Call this once on init, or whenever toggling theme mode.
+    """
+    if mode is not None:
+        set_theme_mode(mode)
 
-    Returns:
-        The configured ttk.Style instance.
-    """
     style = ttk.Style(root)
     style.theme_use("clam")
 
     root.configure(bg=COLORS["bg_primary"])
+
+    # Configure combobox dropdown listbox colors
+    root.option_add("*TCombobox*Listbox.background", COLORS["bg_input"])
+    root.option_add("*TCombobox*Listbox.foreground", COLORS["text_primary"])
+    root.option_add("*TCombobox*Listbox.selectBackground", COLORS["accent"])
+    root.option_add("*TCombobox*Listbox.selectForeground", COLORS["text_on_accent"])
 
     # ── Frames ───────────────────────────────────────────────────
     style.configure("TFrame", background=COLORS["bg_primary"])
@@ -115,7 +197,7 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     background=COLORS["bg_primary"],
                     foreground=COLORS["error"])
 
-    # Card labels (white bg)
+    # Card labels (secondary bg)
     style.configure("Card.TLabel",
                     font=FONTS["body"],
                     background=COLORS["bg_secondary"],
@@ -130,17 +212,15 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     foreground=COLORS["text_secondary"])
 
     # ── Buttons ──────────────────────────────────────────────────
-
-    # Default (dark charcoal)
     style.configure("TButton",
                     font=FONTS["button"], padding=(16, 8),
-                    background=COLORS["bg_dark"],
-                    foreground=COLORS["text_on_dark"],
+                    background=COLORS["bg_hover"],
+                    foreground=COLORS["text_primary"],
                     borderwidth=0, focuscolor="none")
     style.map("TButton",
               background=[("active",   COLORS["accent"]),
                           ("pressed",  COLORS["accent_hover"]),
-                          ("disabled", COLORS["bg_hover"])],
+                          ("disabled", COLORS["bg_primary"])],
               foreground=[("active",   COLORS["text_on_accent"]),
                           ("pressed",  COLORS["text_on_accent"]),
                           ("disabled", COLORS["text_disabled"])])
@@ -153,10 +233,10 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     borderwidth=0, focuscolor="none")
     style.map("Accent.TButton",
               background=[("active",   COLORS["accent_hover"]),
-                          ("pressed",  COLORS["bg_dark"]),
+                          ("pressed",  COLORS["accent"]),
                           ("disabled", COLORS["bg_hover"])],
               foreground=[("active",   COLORS["text_on_accent"]),
-                          ("pressed",  COLORS["text_on_dark"]),
+                          ("pressed",  COLORS["text_on_accent"]),
                           ("disabled", COLORS["text_disabled"])])
 
     # Browse (small, neutral)
@@ -167,7 +247,8 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     borderwidth=0, focuscolor="none")
     style.map("Browse.TButton",
               background=[("active",  COLORS["border"]),
-                          ("pressed", COLORS["accent_light"])])
+                          ("pressed", COLORS["accent_light"])],
+              foreground=[("disabled", COLORS["text_disabled"])])
 
     # ── Entries ──────────────────────────────────────────────────
     style.configure("TEntry",
@@ -188,6 +269,10 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     font=FONTS["input"], padding=(8, 6),
                     fieldbackground=COLORS["bg_input"],
                     foreground=COLORS["text_primary"],
+                    background=COLORS["bg_secondary"],
+                    darkcolor=COLORS["border"],
+                    lightcolor=COLORS["border"],
+                    bordercolor=COLORS["border"],
                     borderwidth=1, arrowsize=14)
     style.map("TCombobox",
               fieldbackground=[("readonly", COLORS["bg_input"])],
@@ -198,6 +283,10 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     font=FONTS["input"], padding=(8, 6),
                     fieldbackground=COLORS["bg_input"],
                     foreground=COLORS["text_primary"],
+                    background=COLORS["bg_secondary"],
+                    darkcolor=COLORS["border"],
+                    lightcolor=COLORS["border"],
+                    bordercolor=COLORS["border"],
                     borderwidth=1, arrowsize=14)
     style.map("TSpinbox",
               bordercolor=[("focus", COLORS["border_focus"])])
@@ -232,7 +321,7 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
     style.map("TNotebook.Tab",
               background=[("selected", COLORS["tab_selected"]),
                           ("active",   COLORS["tab_hover"])],
-              foreground=[("selected", COLORS["text_primary"]),
+              foreground=[("selected", COLORS["accent"]),
                           ("active",   COLORS["text_primary"])],
               expand=[("selected", [0, 0, 0, 2])])
 
