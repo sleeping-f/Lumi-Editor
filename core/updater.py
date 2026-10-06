@@ -25,7 +25,7 @@ from theme import COLORS, FONTS, ToolTip
 # ═══════════════════════════════════════════════════════════════════
 
 APP_NAME = "Lumi Editor"
-CURRENT_VERSION = "1.0.3"
+CURRENT_VERSION = "1.0.4"
 
 # Target GitHub Repository: https://github.com/sleeping-f/Lumi-Editor
 GITHUB_OWNER = "sleeping-f"
@@ -185,58 +185,59 @@ def download_update_asset(download_url: str, progress_callback=None) -> tuple[bo
         if not os.path.exists(downloaded_exe) or os.path.getsize(downloaded_exe) == 0:
             return False, "Downloaded update file is empty or missing.", ""
 
-        # Build updater batch script
-        # Note: Uses ping 127.0.0.1 for delay to avoid 'timeout' command redirection errors
-        batch_script = f"""@echo off
-setlocal
-title Lumi Editor Updater
-echo ========================================================
-echo             UPDATING LUMI EDITOR TO LATEST RELEASE
-echo ========================================================
-echo.
-echo Waiting for Lumi Editor process (PID {pid}) to close...
+        # Build updater PowerShell runner script
+        script_path = os.path.join(temp_dir, f"lumi_updater_{pid}.ps1")
+        log_path = os.path.join(temp_dir, "lumi_updater.log")
 
-set COUNT=0
-:WAIT_LOOP
-tasklist /FI "PID eq {pid}" 2>NUL | find /I /N "{pid}">NUL
-if "%ERRORLEVEL%"=="0" (
-    set /a COUNT+=1
-    if %COUNT% GEQ 30 goto SWAP
-    ping 127.0.0.1 -n 2 > nul
-    goto WAIT_LOOP
-)
+        ps_script = f"""# Lumi Editor Automated Self-Updater
+$target = "{current_exe}"
+$newExe = "{downloaded_exe}"
+$script = $MyInvocation.MyCommand.Path
+$log = "{log_path}"
 
-:SWAP
-:: Extra pause for OS to release file locks on running executable
-ping 127.0.0.1 -n 2 > nul
+"Starting update at $(Get-Date)" | Out-File $log
+"Target: $target" | Out-File $log -Append
+"New: $newExe" | Out-File $log -Append
 
-echo Swapping executable to new version...
-set RETRIES=0
-:COPY_LOOP
-copy /Y "{downloaded_exe}" "{current_exe}" > nul 2>&1
-if "%ERRORLEVEL%"=="0" (
-    del /F /Q "{downloaded_exe}" > nul 2>&1
-    echo Update complete! Restarting Lumi Editor...
-    start "" "{current_exe}"
-    goto CLEANUP
-)
+try {{
+    # 1. Wait for parent process (PID {pid}) to terminate
+    $proc = Get-Process -Id {pid} -ErrorAction SilentlyContinue
+    if ($proc) {{
+        "Waiting for PID {pid}..." | Out-File $log -Append
+        $proc.WaitForExit(15000)
+    }}
+    Start-Sleep -Milliseconds 1000
 
-set /a RETRIES+=1
-if %RETRIES% LEQ 10 (
-    ping 127.0.0.1 -n 2 > nul
-    goto COPY_LOOP
-)
+    # 2. Robust copy retry loop
+    $replaced = $false
+    for ($i = 0; $i -lt 20; $i++) {{
+        try {{
+            Copy-Item -Path $newExe -Destination $target -Force -ErrorAction Stop
+            $replaced = $true
+            "Replaced target on attempt $i" | Out-File $log -Append
+            break
+        }} catch {{
+            "Attempt $i failed: $($_.Exception.Message)" | Out-File $log -Append
+            Start-Sleep -Seconds 1
+        }}
+    }}
 
-echo [ERROR] Failed to overwrite executable: "{current_exe}"
-pause
-exit /b 1
-
-:CLEANUP
-(goto) 2>nul & del "%~f0"
-exit /b 0
+    # 3. Clean up and launch updated application
+    if ($replaced) {{
+        Remove-Item -Path $newExe -Force -ErrorAction SilentlyContinue
+        "Launching: $target" | Out-File $log -Append
+        Start-Process -FilePath $target
+        Start-Sleep -Seconds 2
+        Remove-Item -Path $script -Force -ErrorAction SilentlyContinue
+    }} else {{
+        "CRITICAL: Failed to replace $target after 20 retries" | Out-File $log -Append
+    }}
+}} catch {{
+    "Fatal error: $($_.Exception.Message)" | Out-File $log -Append
+}}
 """
         with open(script_path, "w", encoding="utf-8") as f:
-            f.write(batch_script)
+            f.write(ps_script)
 
         return True, downloaded_exe, script_path
 
@@ -527,17 +528,25 @@ class UpdateDialog(tk.Toplevel):
         # Brief delay to guarantee UI repaints before terminating
         time.sleep(0.3)
 
-        # Launch detached updater script
-        DETACHED_FLAGS = 0
+        # Launch detached PowerShell runner completely independent of this process
+        creationflags = 0
         if os.name == "nt":
-            # DETACHED_PROCESS = 0x00000008, CREATE_NEW_PROCESS_GROUP = 0x00000200
-            DETACHED_FLAGS = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
 
         subprocess.Popen(
-            ["cmd.exe", "/c", script_path],
-            creationflags=DETACHED_FLAGS,
-            close_fds=True
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden",
+                "-File", script_path,
+            ],
+            creationflags=creationflags,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
         )
 
-        # Immediately terminate the current process so the batch script can replace the .exe
+        # Immediately terminate the current process so Windows releases the executable file lock
         os._exit(0)
