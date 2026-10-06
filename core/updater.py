@@ -24,7 +24,7 @@ from theme import COLORS, FONTS, ToolTip
 # ═══════════════════════════════════════════════════════════════════
 
 APP_NAME = "Lumi Editor"
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 
 # Target GitHub Repository: https://github.com/sleeping-f/Lumi-Editor
 GITHUB_OWNER = "sleeping-f"
@@ -298,6 +298,12 @@ class UpdateDialog(tk.Toplevel):
         self.lbl_latest = ttk.Label(v_row, text="Latest:  Checking…",
                                     style="CardSecondary.TLabel")
         self.lbl_latest.pack(side="right")
+
+        # Developer Credit
+        dev_row = ttk.Frame(inner, style="Card.TFrame")
+        dev_row.pack(fill="x", pady=(4, 0))
+        ttk.Label(dev_row, text="Developed by Md. Farhan Sadique",
+                  style="CardSecondary.TLabel").pack(side="left")
 
         # Status & Message
         self.lbl_status = ttk.Label(content, text="Checking GitHub for releases...",

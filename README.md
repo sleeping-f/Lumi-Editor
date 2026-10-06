@@ -101,3 +101,12 @@ lumi editor/
 ├── requirements.txt
 └── README.md
 ```
+
+---
+
+## 👤 Author & Credits
+
+**Developed by Md. Farhan Sadique**  
+- **Repository**: [sleeping-f/Lumi-Editor](https://github.com/sleeping-f/Lumi-Editor)
+- **License**: MIT
+

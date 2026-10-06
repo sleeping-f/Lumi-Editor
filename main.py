@@ -1,5 +1,7 @@
 """
 Lumi Editor — Batch Image Editing Tool
+Developed by Md. Farhan Sadique
+
 Entry point and main application window.
 
     python main.py
@@ -194,7 +196,7 @@ class LumiEditorApp:
 
         tk.Label(
             footer,
-            text="Lumi Editor  •  Batch Edit. Simplified.  •  Powered by Pillow",
+            text="Lumi Editor  •  Developed by Md. Farhan Sadique  •  Batch Edit. Simplified.",
             font=("Segoe UI", 8),
             fg=COLORS["text_muted"],
             bg=COLORS["bg_hover"],
