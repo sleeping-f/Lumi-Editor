@@ -15,17 +15,28 @@ from tkinter import ttk
 
 from PIL import Image, ImageTk
 
-from theme import COLORS, FONTS, apply_theme
-from tabs.crop_tab import CropTab
-from tabs.logo_tab import LogoTab
+
+# ── PyInstaller bundle support ──────────────────────────────────
+# When running as a bundled .exe, assets live under sys._MEIPASS.
+# In dev mode, they live next to this script.
+
+def resource_path(relative_path: str) -> str:
+    """Resolve a path to a bundled resource (works in both dev and .exe)."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative_path)
 
 
 # ── DPI awareness (Windows) ─────────────────────────────────────
-# Must be called before any Tk window is created.
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
     pass
+
+
+from theme import COLORS, FONTS, apply_theme, ToolTip
+from tabs.crop_tab import CropTab
+from tabs.logo_tab import LogoTab
+from core.updater import CURRENT_VERSION, UpdateDialog
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -63,7 +74,7 @@ class LumiEditorApp:
 
     def _set_icon(self):
         """Set the taskbar and title-bar icon from the logo asset."""
-        logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+        logo_path = resource_path(os.path.join("assets", "logo.png"))
         if not os.path.isfile(logo_path):
             return
         try:
@@ -83,7 +94,7 @@ class LumiEditorApp:
         header.pack_propagate(False)
 
         # Logo thumbnail
-        logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+        logo_path = resource_path(os.path.join("assets", "logo.png"))
         if os.path.isfile(logo_path):
             try:
                 logo = Image.open(logo_path)
@@ -110,6 +121,23 @@ class LumiEditorApp:
             fg=COLORS["accent"],
             bg=COLORS["bg_dark"],
         ).pack(side="left", padx=(10, 0), pady=(12, 10))
+
+        # Right side: Update button in header
+        update_btn = tk.Button(
+            header,
+            text="✨ Check Updates",
+            font=FONTS["button_small"],
+            bg=COLORS["bg_darker"],
+            fg=COLORS["accent"],
+            activebackground=COLORS["accent"],
+            activeforeground=COLORS["bg_darker"],
+            relief="flat",
+            padx=10, pady=4,
+            cursor="hand2",
+            command=self._open_updater
+        )
+        update_btn.pack(side="right", padx=16, pady=12)
+        ToolTip(update_btn, "Check for new versions and software updates")
 
         # Gold accent line under header
         accent_bar = tk.Frame(self.root, bg=COLORS["accent"], height=3)
@@ -148,13 +176,21 @@ class LumiEditorApp:
             bg=COLORS["bg_hover"],
         ).pack(side="left", padx=16, pady=6)
 
-        tk.Label(
+        ver_lbl = tk.Label(
             footer,
-            text="v1.0",
-            font=("Segoe UI", 8),
-            fg=COLORS["text_muted"],
+            text=f"v{CURRENT_VERSION}",
+            font=("Segoe UI", 8, "bold"),
+            fg=COLORS["accent"],
             bg=COLORS["bg_hover"],
-        ).pack(side="right", padx=16, pady=6)
+            cursor="hand2",
+        )
+        ver_lbl.pack(side="right", padx=16, pady=6)
+        ver_lbl.bind("<Button-1>", lambda e: self._open_updater())
+        ToolTip(ver_lbl, "Click to check for updates")
+
+    def _open_updater(self):
+        """Open the update manager dialog."""
+        UpdateDialog(self.root)
 
     # ───────────────────────────────────────────────────────────────
     #  RUN

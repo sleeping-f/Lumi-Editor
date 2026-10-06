@@ -13,6 +13,7 @@ from core.utils import (
     ensure_output_dir,
     generate_output_path,
     save_image,
+    load_oriented_image,
 )
 
 
@@ -171,6 +172,7 @@ def batch_insert_logo(
     padding: int = 10,
     output_format: str = "same",
     quality: int = 95,
+    rotation: str = "Auto (EXIF)",
     progress_callback=None,
 ) -> dict:
     """
@@ -186,6 +188,7 @@ def batch_insert_logo(
         padding:           Edge padding in pixels.
         output_format:     "same" / "jpeg" / "png" / "webp".
         quality:           JPEG / WebP quality 1–100.
+        rotation:          Rotation mode ('Auto (EXIF)', 'Rotate 90° CW', etc.).
         progress_callback: Optional ``(current, total, filename, status)`` callable.
 
     Returns:
@@ -194,8 +197,8 @@ def batch_insert_logo(
     images = discover_images(input_dir)
     ensure_output_dir(output_dir)
 
-    # Load logo once — all images share the same source logo
-    logo = Image.open(logo_path).convert("RGBA")
+    # Load logo once with orientation handling — all images share the same source logo
+    logo = load_oriented_image(logo_path).convert("RGBA")
 
     results = {
         "processed": 0,
@@ -207,17 +210,17 @@ def batch_insert_logo(
     for idx, img_path in enumerate(images, start=1):
         filename = os.path.basename(img_path)
         try:
-            with Image.open(img_path) as base:
-                base.load()
-                result_img = insert_logo_single(
-                    base, logo, position,
-                    scale_pct, opacity, padding,
-                )
+            base = load_oriented_image(img_path, rotation=rotation)
+            exif_data = base.getexif()
+            result_img = insert_logo_single(
+                base, logo, position,
+                scale_pct, opacity, padding,
+            )
 
             out_path = generate_output_path(
                 img_path, output_dir, "", output_format,
             )
-            save_image(result_img, out_path, output_format, quality, img_path)
+            save_image(result_img, out_path, output_format, quality, img_path, exif=exif_data)
             results["processed"] += 1
 
             if progress_callback:

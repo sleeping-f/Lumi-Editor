@@ -13,6 +13,7 @@ from core.utils import (
     ensure_output_dir,
     generate_output_path,
     save_image,
+    load_oriented_image,
 )
 
 
@@ -219,6 +220,7 @@ def batch_crop(
     params: dict,
     output_format: str = "same",
     quality: int = 95,
+    rotation: str = "Auto (EXIF)",
     progress_callback=None,
 ) -> dict:
     """
@@ -231,6 +233,7 @@ def batch_crop(
         params:            Mode-specific parameter dict (see crop_single).
         output_format:     "same" / "jpeg" / "png" / "webp".
         quality:           JPEG / WebP quality 1–100.
+        rotation:          Rotation mode ('Auto (EXIF)', 'Rotate 90° CW', etc.).
         progress_callback: Optional ``(current, total, filename, status)`` callable
                            invoked after each image.
 
@@ -250,14 +253,14 @@ def batch_crop(
     for idx, img_path in enumerate(images, start=1):
         filename = os.path.basename(img_path)
         try:
-            with Image.open(img_path) as img:
-                img.load()                          # force full decode
-                cropped = crop_single(img, mode, params)
+            img = load_oriented_image(img_path, rotation=rotation)
+            exif_data = img.getexif()
+            cropped = crop_single(img, mode, params)
 
             out_path = generate_output_path(
                 img_path, output_dir, "", output_format,
             )
-            save_image(cropped, out_path, output_format, quality, img_path)
+            save_image(cropped, out_path, output_format, quality, img_path, exif=exif_data)
             results["processed"] += 1
 
             if progress_callback:

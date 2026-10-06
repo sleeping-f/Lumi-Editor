@@ -13,7 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
 from core.logo_inserter import LogoPosition, insert_logo_single, batch_insert_logo
-from core.utils import discover_images
+from core.utils import discover_images, load_oriented_image, ROTATION_MODES
 from theme import COLORS, FONTS, ToolTip
 
 
@@ -126,18 +126,28 @@ class LogoTab(ttk.Frame):
         inner = ttk.Frame(lf, style="Card.TFrame")
         inner.pack(fill="x", padx=4, pady=2)
 
-        # ── Row 1: Position ──────────────────────────────────────
+        # ── Row 1: Position & Orientation ─────────────────────────
         row1 = ttk.Frame(inner, style="Card.TFrame")
         row1.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(row1, text="Position", width=12,
+        ttk.Label(row1, text="Position", width=10,
                   style="Card.TLabel").pack(side="left")
         self._pos_var = tk.StringVar(value=LogoPosition.BOTTOM_RIGHT.value)
         pcb = ttk.Combobox(row1, textvariable=self._pos_var,
                            values=[p.value for p in LogoPosition],
-                           state="readonly", width=16)
-        pcb.pack(side="left", padx=(0, 24))
+                           state="readonly", width=14)
+        pcb.pack(side="left", padx=(0, 20))
         ToolTip(pcb, "Where to place the logo on each image")
+
+        # Orientation / Rotation selector
+        ttk.Label(row1, text="Orientation:", style="Card.TLabel").pack(side="left", padx=(0, 6))
+        self._rotate_var = tk.StringVar(value=ROTATION_MODES[0])
+        rcb = ttk.Combobox(row1, textvariable=self._rotate_var,
+                           values=ROTATION_MODES,
+                           state="readonly", width=15)
+        rcb.pack(side="left")
+        rcb.bind("<<ComboboxSelected>>", self._update_image_hint)
+        ToolTip(rcb, "Auto (EXIF) keeps portrait photos upright. Choose 90°/180° for manual rotation.")
 
         # Image count hint
         self._count_hint = ttk.Label(row1, text="", style="CardSecondary.TLabel")
@@ -271,11 +281,24 @@ class LogoTab(ttk.Frame):
             self._input_var.set(folder)
             if not self._output_var.get():
                 self._output_var.set(os.path.join(folder, "with_logo"))
-            try:
-                n = len(discover_images(folder))
-                self._count_hint.configure(text=f"{n} image{'s' if n != 1 else ''} found")
-            except Exception:
-                self._count_hint.configure(text="")
+            self._update_image_hint()
+
+    def _update_image_hint(self, _event=None):
+        folder = self._input_var.get().strip()
+        if not folder or not os.path.isdir(folder):
+            self._count_hint.configure(text="")
+            return
+        try:
+            imgs = discover_images(folder)
+            n = len(imgs)
+            if n > 0:
+                first = load_oriented_image(imgs[0], rotation=self._rotate_var.get())
+                w, h = first.size
+                self._count_hint.configure(text=f"{n} image{'s' if n != 1 else ''} ({w}×{h})")
+            else:
+                self._count_hint.configure(text="0 images found")
+        except Exception:
+            self._count_hint.configure(text="")
 
     def _browse_output(self):
         folder = filedialog.askdirectory(title="Select Output Folder", parent=self)
@@ -299,7 +322,7 @@ class LogoTab(ttk.Frame):
     def _show_logo_thumbnail(self, path):
         """Display a small thumbnail of the selected logo."""
         try:
-            logo = Image.open(path)
+            logo = load_oriented_image(path)
             # Fit into 32×32
             logo.thumbnail((32, 32), Image.Resampling.LANCZOS)
             self._logo_preview_photo = ImageTk.PhotoImage(logo)
@@ -380,8 +403,9 @@ class LogoTab(ttk.Frame):
             return
         try:
             images = discover_images(self._input_var.get().strip())
-            logo = Image.open(self._logo_var.get().strip())
-            original = Image.open(images[0])
+            logo = load_oriented_image(self._logo_var.get().strip())
+            rotation = self._rotate_var.get()
+            original = load_oriented_image(images[0], rotation=rotation)
 
             position  = self._get_position()
             scale_pct = self._scale_var.get()
@@ -473,6 +497,7 @@ class LogoTab(ttk.Frame):
         inp        = self._input_var.get().strip()
         out        = self._output_var.get().strip()
         logo_path  = self._logo_var.get().strip()
+        rotation   = self._rotate_var.get()
 
         def worker():
             try:
@@ -481,6 +506,7 @@ class LogoTab(ttk.Frame):
                     logo_path=logo_path, position=position,
                     scale_pct=scale_pct, opacity=opacity,
                     padding=padding, output_format=fmt, quality=quality,
+                    rotation=rotation,
                     progress_callback=lambda c, t, f, s:
                         self._queue.put(("progress", c, t, f, s)),
                 )

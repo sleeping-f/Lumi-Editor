@@ -5,15 +5,23 @@ Common functions for image discovery, path handling, and file saving.
 
 import os
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 
 
-# ─── Supported Formats ───────────────────────────────────────────
+# ─── Supported Formats & Rotation ────────────────────────────────
 
 SUPPORTED_EXTENSIONS = frozenset({
     '.jpg', '.jpeg', '.png', '.bmp',
     '.tiff', '.tif', '.webp'
 })
+
+ROTATION_MODES = [
+    "Auto (EXIF)",
+    "Rotate 90° CW",
+    "Rotate 90° CCW",
+    "Rotate 180°",
+    "Raw (No EXIF)",
+]
 
 
 # ─── Image Discovery ─────────────────────────────────────────────
@@ -98,6 +106,46 @@ def generate_output_path(
     return str(Path(output_dir) / filename)
 
 
+# ─── Image Loading with EXIF Orientation ─────────────────────────
+
+def load_oriented_image(path: str, rotation: str = "Auto (EXIF)") -> Image.Image:
+    """
+    Open an image file, automatically correct its EXIF orientation, and optionally
+    apply additional rotation.
+
+    Cameras and smartphones often save portrait images in sensor landscape mode
+    (e.g., 4000x3000) and record rotation metadata in the EXIF Orientation tag.
+    Standard photo viewers rotate the display on the fly, but raw Image.open()
+    ignores this tag, leading to images appearing rotated 90 degrees.
+
+    This function physically transposes pixels according to EXIF, strips the
+    orientation tag to prevent downstream double-rotation, and applies any
+    requested manual rotation (90° CW, 90° CCW, 180°).
+    """
+    with Image.open(path) as raw:
+        if rotation != "Raw (No EXIF)":
+            try:
+                img = ImageOps.exif_transpose(raw)
+                if img is None:
+                    img = raw.copy()
+            except Exception:
+                img = raw.copy()
+        else:
+            img = raw.copy()
+
+        img.load()
+
+        # Optional manual rotation
+        if rotation == "Rotate 90° CW":
+            img = img.transpose(Image.Transpose.ROTATE_270)
+        elif rotation == "Rotate 90° CCW":
+            img = img.transpose(Image.Transpose.ROTATE_90)
+        elif rotation == "Rotate 180°":
+            img = img.transpose(Image.Transpose.ROTATE_180)
+
+        return img
+
+
 # ─── Image Saving ────────────────────────────────────────────────
 
 def save_image(
@@ -105,10 +153,12 @@ def save_image(
     path: str,
     output_format: str = "same",
     quality: int = 95,
-    original_path: str = ""
+    original_path: str = "",
+    exif = None,
 ) -> None:
     """
-    Save a PIL Image, handling RGBA → RGB conversion for JPEG output.
+    Save a PIL Image, handling RGBA → RGB conversion for JPEG output
+    and preserving clean EXIF metadata without old orientation tags.
 
     Args:
         img:             PIL Image to save.
@@ -116,6 +166,7 @@ def save_image(
         output_format:   "same" / "jpeg" / "png" / "webp".
         quality:         JPEG / WebP quality (1–100).
         original_path:   Original file path (used for format inference when 'same').
+        exif:            Optional EXIF dict or PIL.Image.Exif object.
     """
     save_path = Path(path)
     ext = save_path.suffix.lower()
@@ -137,5 +188,15 @@ def save_image(
         kwargs = {'quality': quality, 'method': 4}
     elif ext == '.png':
         kwargs = {'optimize': True}
+
+    if exif:
+        try:
+            # Strip EXIF orientation tag (0x0112) so no viewer double-rotates
+            if 0x0112 in exif:
+                del exif[0x0112]
+            if ext in ('.jpg', '.jpeg', '.webp', '.tiff'):
+                kwargs['exif'] = exif
+        except Exception:
+            pass
 
     img.save(str(save_path), **kwargs)

@@ -12,7 +12,7 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
 from core.cropper import CropMode, crop_single, batch_crop
-from core.utils import discover_images
+from core.utils import discover_images, load_oriented_image, ROTATION_MODES
 from theme import COLORS, FONTS, ToolTip
 
 
@@ -111,17 +111,27 @@ class CropTab(ttk.Frame):
         inner = ttk.Frame(lf, style="Card.TFrame")
         inner.pack(fill="x", padx=4, pady=2)
 
-        # Mode selector
+        # Mode selector row
         mr = ttk.Frame(inner, style="Card.TFrame")
         mr.pack(fill="x", pady=(0, 12))
-        ttk.Label(mr, text="Crop Mode", width=14, style="Card.TLabel").pack(side="left")
+        ttk.Label(mr, text="Crop Mode", width=11, style="Card.TLabel").pack(side="left")
         self._mode_var = tk.StringVar(value=CropMode.EXACT_PIXELS.value)
         cb = ttk.Combobox(mr, textvariable=self._mode_var,
                           values=[m.value for m in CropMode],
-                          state="readonly", width=20)
-        cb.pack(side="left")
+                          state="readonly", width=16)
+        cb.pack(side="left", padx=(0, 16))
         cb.bind("<<ComboboxSelected>>", self._on_mode_change)
         ToolTip(cb, "Choose how the crop region is defined")
+
+        # Orientation / Rotation selector
+        ttk.Label(mr, text="Orientation:", style="Card.TLabel").pack(side="left", padx=(0, 6))
+        self._rotate_var = tk.StringVar(value=ROTATION_MODES[0])
+        rcb = ttk.Combobox(mr, textvariable=self._rotate_var,
+                           values=ROTATION_MODES,
+                           state="readonly", width=15)
+        rcb.pack(side="left")
+        rcb.bind("<<ComboboxSelected>>", self._update_image_hint)
+        ToolTip(rcb, "Auto (EXIF) keeps portrait photos upright. Choose 90°/180° for manual rotation.")
 
         # Image count hint
         self._count_hint = ttk.Label(mr, text="", style="CardSecondary.TLabel")
@@ -323,12 +333,24 @@ class CropTab(ttk.Frame):
             self._input_var.set(folder)
             if not self._output_var.get():
                 self._output_var.set(os.path.join(folder, "cropped"))
-            # Update image count hint
-            try:
-                n = len(discover_images(folder))
-                self._count_hint.configure(text=f"{n} image{'s' if n != 1 else ''} found")
-            except Exception:
-                self._count_hint.configure(text="")
+            self._update_image_hint()
+
+    def _update_image_hint(self, _event=None):
+        folder = self._input_var.get().strip()
+        if not folder or not os.path.isdir(folder):
+            self._count_hint.configure(text="")
+            return
+        try:
+            imgs = discover_images(folder)
+            n = len(imgs)
+            if n > 0:
+                first = load_oriented_image(imgs[0], rotation=self._rotate_var.get())
+                w, h = first.size
+                self._count_hint.configure(text=f"{n} image{'s' if n != 1 else ''} ({w}×{h})")
+            else:
+                self._count_hint.configure(text="0 images found")
+        except Exception:
+            self._count_hint.configure(text="")
 
     def _browse_output(self):
         folder = filedialog.askdirectory(title="Select Output Folder", parent=self)
@@ -415,7 +437,8 @@ class CropTab(ttk.Frame):
         try:
             images = discover_images(self._input_var.get().strip())
             mode, params = self._get_mode_and_params()
-            original = Image.open(images[0])
+            rotation = self._rotate_var.get()
+            original = load_oriented_image(images[0], rotation=rotation)
             cropped = crop_single(original, mode, params)
             self._open_preview_window(original, cropped,
                                       os.path.basename(images[0]))
@@ -502,6 +525,7 @@ class CropTab(ttk.Frame):
         quality = self._quality_var.get()
         inp = self._input_var.get().strip()
         out = self._output_var.get().strip()
+        rotation = self._rotate_var.get()
 
         def worker():
             try:
@@ -509,6 +533,7 @@ class CropTab(ttk.Frame):
                     input_dir=inp, output_dir=out,
                     mode=mode, params=params,
                     output_format=fmt, quality=quality,
+                    rotation=rotation,
                     progress_callback=lambda c, t, f, s:
                         self._queue.put(("progress", c, t, f, s)),
                 )
