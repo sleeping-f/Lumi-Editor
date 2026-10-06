@@ -10,6 +10,7 @@ import sys
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 import urllib.error
 import webbrowser
@@ -24,7 +25,7 @@ from theme import COLORS, FONTS, ToolTip
 # ═══════════════════════════════════════════════════════════════════
 
 APP_NAME = "Lumi Editor"
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "1.0.2"
 
 # Target GitHub Repository: https://github.com/sleeping-f/Lumi-Editor
 GITHUB_OWNER = "sleeping-f"
@@ -146,20 +147,21 @@ def check_for_updates(timeout: int = 7) -> dict:
 #  WINDOWS SELF-UPDATE HANDOFF
 # ═══════════════════════════════════════════════════════════════════
 
-def perform_windows_update(download_url: str, progress_callback=None) -> tuple[bool, str]:
+def download_update_asset(download_url: str, progress_callback=None) -> tuple[bool, str, str]:
     """
-    Download the new executable from GitHub and execute a detached batch runner
-    that waits for this process to exit, swaps the .exe, and restarts it.
+    Download the new executable from GitHub to %TEMP% and generate the updater script.
+    Returns (success, downloaded_exe_or_error, batch_script_path).
     """
     if not getattr(sys, 'frozen', False):
-        return False, "Self-update is only available when running from compiled .exe."
+        return False, "Self-update is only available when running from compiled .exe.", ""
 
     current_exe = os.path.abspath(sys.executable)
     temp_dir = tempfile.gettempdir()
     downloaded_exe = os.path.join(temp_dir, f"LumiEditor_update_{os.getpid()}.exe")
+    script_path = os.path.join(temp_dir, f"lumi_updater_{os.getpid()}.bat")
+    pid = os.getpid()
 
     try:
-        # Download new binary in chunks with progress reporting
         req = urllib.request.Request(
             download_url,
             headers={"User-Agent": f"LumiEditor/{CURRENT_VERSION}"}
@@ -180,55 +182,72 @@ def perform_windows_update(download_url: str, progress_callback=None) -> tuple[b
                     pct = min(100.0, (downloaded / total_size) * 100.0)
                     progress_callback(pct, downloaded, total_size)
 
-        # Create the updater batch script
-        script_path = os.path.join(temp_dir, f"lumi_updater_{os.getpid()}.bat")
-        pid = os.getpid()
+        if not os.path.exists(downloaded_exe) or os.path.getsize(downloaded_exe) == 0:
+            return False, "Downloaded update file is empty or missing.", ""
 
+        # Build updater batch script
+        # Note: Uses ping 127.0.0.1 for delay to avoid 'timeout' command redirection errors
         batch_script = f"""@echo off
+setlocal
 title Lumi Editor Updater
 echo ========================================================
 echo             UPDATING LUMI EDITOR TO LATEST RELEASE
 echo ========================================================
 echo.
 echo Waiting for Lumi Editor process (PID {pid}) to close...
-ping 127.0.0.1 -n 3 > nul
 
+set COUNT=0
 :WAIT_LOOP
 tasklist /FI "PID eq {pid}" 2>NUL | find /I /N "{pid}">NUL
 if "%ERRORLEVEL%"=="0" (
-    timeout /t 1 /nobreak > nul
+    set /a COUNT+=1
+    if %COUNT% GEQ 30 goto SWAP
+    ping 127.0.0.1 -n 2 > nul
     goto WAIT_LOOP
 )
 
+:SWAP
+:: Extra pause for OS to release file locks on running executable
+ping 127.0.0.1 -n 2 > nul
+
 echo Swapping executable to new version...
-copy /Y "{downloaded_exe}" "{current_exe}" > nul
+set RETRIES=0
+:COPY_LOOP
+copy /Y "{downloaded_exe}" "{current_exe}" > nul 2>&1
 if "%ERRORLEVEL%"=="0" (
-    del /F /Q "{downloaded_exe}" > nul
+    del /F /Q "{downloaded_exe}" > nul 2>&1
     echo Update complete! Restarting Lumi Editor...
     start "" "{current_exe}"
-) else (
-    echo [ERROR] Failed to overwrite executable. You can manually copy:
-    echo "{downloaded_exe}"
-    echo to:
-    echo "{current_exe}"
-    pause
+    goto CLEANUP
 )
-del /F /Q "{script_path}" > nul
-exit
+
+set /a RETRIES+=1
+if %RETRIES% LEQ 10 (
+    ping 127.0.0.1 -n 2 > nul
+    goto COPY_LOOP
+)
+
+echo [ERROR] Failed to overwrite executable: "{current_exe}"
+pause
+exit /b 1
+
+:CLEANUP
+(goto) 2>nul & del "%~f0"
+exit /b 0
 """
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(batch_script)
 
-        # Launch detached updater script and terminate current app
-        subprocess.Popen(
-            ["cmd.exe", "/c", script_path],
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            close_fds=True
-        )
-        sys.exit(0)
+        return True, downloaded_exe, script_path
 
     except Exception as e:
-        return False, f"Failed to download/apply update: {str(e)}"
+        return False, f"Failed to download update: {str(e)}", ""
+
+
+def perform_windows_update(download_url: str, progress_callback=None) -> tuple[bool, str]:
+    """Backward compatibility wrapper."""
+    success, res, _ = download_update_asset(download_url, progress_callback)
+    return success, res
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -242,8 +261,6 @@ class UpdateDialog(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Lumi Editor — Software Updates")
-        self.geometry("560x420")
-        self.minsize(500, 360)
         self.configure(bg=COLORS["bg_primary"])
         self.transient(parent)
         self.grab_set()
@@ -251,7 +268,23 @@ class UpdateDialog(tk.Toplevel):
         self._download_url = ""
         self._html_url = GITHUB_RELEASES_PAGE
         self._build_ui()
+        self._center_window(parent, width=640, height=560)
         self._start_check()
+
+    def _center_window(self, parent, width: int = 640, height: int = 560):
+        """Center modal dialog over parent window with minimum bounds."""
+        self.minsize(580, 480)
+        self.update_idletasks()
+        try:
+            pw = parent.winfo_width()
+            ph = parent.winfo_height()
+            px = parent.winfo_rootx()
+            py = parent.winfo_rooty()
+            x = px + max(0, (pw - width) // 2)
+            y = py + max(0, (ph - height) // 2)
+            self.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            self.geometry(f"{width}x{height}")
 
     def _build_ui(self):
         # Header banner
@@ -278,16 +311,16 @@ class UpdateDialog(tk.Toplevel):
         accent_bar = tk.Frame(self, bg=COLORS["accent"], height=2)
         accent_bar.pack(fill="x", side="top")
 
-        # Content Container
+        # Main Content Container
         content = ttk.Frame(self, style="TFrame")
-        content.pack(fill="both", expand=True, padx=22, pady=14)
+        content.pack(fill="both", expand=True, padx=22, pady=(14, 16))
 
-        # Version Info Card
+        # 1. Top Version Info Card
         card = ttk.LabelFrame(content, text="  Version Information  ")
-        card.pack(fill="x", pady=(0, 10))
+        card.pack(side="top", fill="x", pady=(0, 10))
 
         inner = ttk.Frame(card, style="Card.TFrame")
-        inner.pack(fill="x", padx=6, pady=4)
+        inner.pack(fill="x", padx=10, pady=6)
 
         v_row = ttk.Frame(inner, style="Card.TFrame")
         v_row.pack(fill="x")
@@ -305,38 +338,9 @@ class UpdateDialog(tk.Toplevel):
         ttk.Label(dev_row, text="Developed by Md. Farhan Sadique",
                   style="CardSecondary.TLabel").pack(side="left")
 
-        # Status & Message
-        self.lbl_status = ttk.Label(content, text="Checking GitHub for releases...",
-                                    style="Subheading.TLabel")
-        self.lbl_status.pack(anchor="w", pady=(0, 4))
-
-        # Changelog / Details text box
-        self.txt_changelog = tk.Text(
-            content, height=8, bg=COLORS["bg_secondary"],
-            fg=COLORS["text_primary"], relief="solid",
-            borderwidth=1, font=FONTS["body_small"],
-            wrap="word", padx=10, pady=8
-        )
-        self.txt_changelog.pack(fill="both", expand=True, pady=(0, 8))
-        self.txt_changelog.insert("1.0", "Connecting to GitHub Releases API…")
-        self.txt_changelog.configure(state="disabled")
-
-        # Progress bar & label
-        self.pbar_frame = ttk.Frame(content, style="TFrame")
-        self.pbar_frame.pack(fill="x", pady=(0, 10))
-
-        self.pbar = ttk.Progressbar(self.pbar_frame, orient="horizontal",
-                                   mode="indeterminate",
-                                   style="Gold.Horizontal.TProgressbar")
-        self.pbar.pack(fill="x")
-        self.pbar.start(10)
-
-        self.lbl_progress_info = ttk.Label(self.pbar_frame, text="", style="Secondary.TLabel")
-        self.lbl_progress_info.pack(anchor="w", pady=(2, 0))
-
-        # Action Buttons Footer
+        # 2. Bottom Action Buttons Bar (Packed at bottom so buttons are ALWAYS visible)
         btn_bar = ttk.Frame(content, style="TFrame")
-        btn_bar.pack(fill="x")
+        btn_bar.pack(side="bottom", fill="x", pady=(12, 0))
 
         self.btn_check = ttk.Button(
             btn_bar, text="🔄  Check Again",
@@ -363,6 +367,38 @@ class UpdateDialog(tk.Toplevel):
             state="disabled"
         )
         self.btn_update.pack(side="right")
+
+        # 3. Bottom Progress Bar & Info (Packed above action buttons)
+        self.pbar_frame = ttk.Frame(content, style="TFrame")
+        self.pbar_frame.pack(side="bottom", fill="x", pady=(0, 6))
+
+        self.pbar = ttk.Progressbar(self.pbar_frame, orient="horizontal",
+                                   mode="indeterminate",
+                                   style="Gold.Horizontal.TProgressbar")
+        self.pbar.pack(fill="x")
+        self.pbar.start(10)
+
+        self.lbl_progress_info = ttk.Label(self.pbar_frame, text="", style="Secondary.TLabel")
+        self.lbl_progress_info.pack(anchor="w", pady=(3, 0))
+
+        # 4. Status Heading (Under Card)
+        self.lbl_status = ttk.Label(content, text="Checking GitHub for releases...",
+                                    style="Subheading.TLabel")
+        self.lbl_status.pack(side="top", anchor="w", pady=(0, 6))
+
+        # 5. Changelog / Details text box (Fills remaining vertical space in center)
+        txt_container = ttk.Frame(content, style="TFrame")
+        txt_container.pack(side="top", fill="both", expand=True)
+
+        self.txt_changelog = tk.Text(
+            txt_container, bg=COLORS["bg_secondary"],
+            fg=COLORS["text_primary"], relief="solid",
+            borderwidth=1, font=FONTS["body_small"],
+            wrap="word", padx=10, pady=8
+        )
+        self.txt_changelog.pack(fill="both", expand=True)
+        self.txt_changelog.insert("1.0", "Connecting to GitHub Releases API…")
+        self.txt_changelog.configure(state="disabled")
 
     def _open_github(self):
         webbrowser.open(self._html_url or GITHUB_RELEASES_PAGE)
@@ -440,6 +476,7 @@ class UpdateDialog(tk.Toplevel):
         self.btn_update.configure(state="disabled")
         self.btn_check.configure(state="disabled")
         self.btn_github.configure(state="disabled")
+        self.btn_close.configure(state="disabled")
         self.lbl_status.configure(text="Downloading update from GitHub...", style="Subheading.TLabel")
         self.pbar.configure(mode="determinate", value=0)
 
@@ -451,10 +488,44 @@ class UpdateDialog(tk.Toplevel):
                 self.after(0, lambda: self.pbar.configure(value=pct))
                 self.after(0, lambda: self.lbl_progress_info.configure(text=info_text))
 
-            success, err = perform_windows_update(self._download_url, progress_callback=progress)
-            if not success:
-                self.after(0, lambda: messagebox.showerror("Update Error", err, parent=self))
-                self.after(0, lambda: self.btn_check.configure(state="normal"))
-                self.after(0, lambda: self.btn_github.configure(state="normal"))
+            success, path_or_err, script_path = download_update_asset(
+                self._download_url, progress_callback=progress
+            )
+
+            if success:
+                self.after(0, lambda: self._execute_restart(script_path))
+            else:
+                self.after(0, lambda: self._on_download_failed(path_or_err))
 
         threading.Thread(target=update_worker, daemon=True).start()
+
+    def _on_download_failed(self, error_message: str):
+        messagebox.showerror("Update Error", error_message, parent=self)
+        self.btn_check.configure(state="normal")
+        self.btn_github.configure(state="normal")
+        self.btn_close.configure(state="normal")
+        self.lbl_status.configure(text="Update failed.", style="Subheading.TLabel")
+
+    def _execute_restart(self, script_path: str):
+        self.lbl_status.configure(text="⚡  Update Downloaded! Restarting Lumi Editor...", style="Success.TLabel")
+        self.lbl_progress_info.configure(text="Applying update and launching new version...")
+        self.pbar.configure(value=100)
+        self.update()
+
+        # Brief delay to guarantee UI repaints before terminating
+        time.sleep(0.3)
+
+        # Launch detached updater script
+        DETACHED_FLAGS = 0
+        if os.name == "nt":
+            # DETACHED_PROCESS = 0x00000008, CREATE_NEW_PROCESS_GROUP = 0x00000200
+            DETACHED_FLAGS = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
+        subprocess.Popen(
+            ["cmd.exe", "/c", script_path],
+            creationflags=DETACHED_FLAGS,
+            close_fds=True
+        )
+
+        # Immediately terminate the current process so the batch script can replace the .exe
+        os._exit(0)
