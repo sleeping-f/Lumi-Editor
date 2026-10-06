@@ -242,7 +242,7 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
                     foreground=COLORS["text_primary"],
                     borderwidth=1, relief="solid",
                     bordercolor=COLORS["border"],
-                    padding=16)
+                    padding=(14, 10))
     style.configure("TLabelframe.Label",
                     font=FONTS["subheading"],
                     foreground=COLORS["accent"],

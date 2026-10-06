@@ -53,18 +53,43 @@ class CropTab(ttk.Frame):
     # ───────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # Scrollable container
-        container = ttk.Frame(self, style="TFrame")
-        container.pack(fill="both", expand=True, padx=28, pady=16)
+        # Scrollable container supporting mouse wheel on any screen resolution
+        canvas = tk.Canvas(self, bg=COLORS["bg_primary"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style="TFrame")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(window_id, width=event.width)
+
+        canvas.bind("<Configure>", _on_canvas_configure)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        container = ttk.Frame(scrollable_frame, style="TFrame")
+        container.pack(fill="both", expand=True, padx=24, pady=12)
 
         self._build_folders(container)
-        self._spacer(container, 12)
-        self._build_crop_settings(container)
-        self._spacer(container, 12)
-        self._build_output_settings(container)
-        self._spacer(container, 18)
-        self._build_actions(container)
         self._spacer(container, 10)
+        self._build_crop_settings(container)
+        self._spacer(container, 10)
+        self._build_output_settings(container)
+        self._spacer(container, 14)
+        self._build_actions(container)
+        self._spacer(container, 8)
         self._build_progress(container)
 
     @staticmethod
@@ -450,8 +475,16 @@ class CropTab(ttk.Frame):
         win = tk.Toplevel(self)
         win.title(f"Crop Preview — {filename}")
         win.configure(bg=COLORS["bg_primary"])
-        win.geometry("960x540")
-        win.minsize(600, 350)
+        # Size window to 80% of main screen height, with proportional width, centered
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+        target_h = int(screen_h * 0.80)
+        target_w = min(int(screen_w * 0.88), int(target_h * 1.35))
+        pos_x = max(0, (screen_w - target_w) // 2)
+        pos_y = max(0, (screen_h - target_h) // 2)
+
+        win.geometry(f"{target_w}x{target_h}+{pos_x}+{pos_y}")
+        win.minsize(680, 420)
         win.transient(self.winfo_toplevel())
         win.grab_set()
 

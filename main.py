@@ -47,14 +47,12 @@ class LumiEditorApp:
     """Main application: branded header + tabbed content area."""
 
     # Window defaults
-    WIN_TITLE    = "Lumi Editor"
-    WIN_SIZE     = "980x720"
-    WIN_MIN      = (780, 560)
+    WIN_TITLE = "Lumi Editor"
+    WIN_MIN   = (840, 580)
 
     def __init__(self):
         self.root = tk.Tk()
         self.root.title(self.WIN_TITLE)
-        self.root.geometry(self.WIN_SIZE)
         self.root.minsize(*self.WIN_MIN)
 
         # Apply the custom theme
@@ -67,6 +65,32 @@ class LumiEditorApp:
         self._build_header()
         self._build_tabs()
         self._build_footer()
+
+        # Set optimal geometry so all controls & progress bar are immediately visible
+        self._apply_ideal_geometry()
+
+    def _apply_ideal_geometry(self):
+        """Size and center window ideally based on screen resolution and content requirements."""
+        self.root.update_idletasks()
+
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+
+        req_w = self.root.winfo_reqwidth()
+        req_h = self.root.winfo_reqheight()
+
+        # Target width has comfortable horizontal breathing room (default 1020px)
+        target_w = max(1020, min(req_w + 60, screen_w - 60))
+        target_w = min(target_w, screen_w - 40)
+
+        # Target height fits all content, action buttons, and progress bar with generous margin
+        target_h = max(880, min(req_h + 30, screen_h - 70))
+        target_h = min(target_h, screen_h - 70)
+
+        pos_x = max(0, (screen_w - target_w) // 2)
+        pos_y = max(0, (screen_h - target_h) // 2)
+
+        self.root.geometry(f"{target_w}x{target_h}+{pos_x}+{pos_y}")
 
     # ───────────────────────────────────────────────────────────────
     #  WINDOW ICON
