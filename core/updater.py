@@ -25,7 +25,7 @@ from theme import COLORS, FONTS, ToolTip
 # ═══════════════════════════════════════════════════════════════════
 
 APP_NAME = "Lumi Editor"
-CURRENT_VERSION = "1.0.2"
+CURRENT_VERSION = "1.0.3"
 
 # Target GitHub Repository: https://github.com/sleeping-f/Lumi-Editor
 GITHUB_OWNER = "sleeping-f"
@@ -268,21 +268,33 @@ class UpdateDialog(tk.Toplevel):
         self._download_url = ""
         self._html_url = GITHUB_RELEASES_PAGE
         self._build_ui()
-        self._center_window(parent, width=640, height=560)
+        self._center_window(parent, width=1056, height=784)
         self._start_check()
 
-    def _center_window(self, parent, width: int = 640, height: int = 560):
+    def _center_window(self, parent, width: int = 1056, height: int = 784):
         """Center modal dialog over parent window with minimum bounds."""
-        self.minsize(580, 480)
+        self.minsize(640, 480)
         self.update_idletasks()
         try:
+            sw = self.winfo_screenwidth()
+            sh = self.winfo_screenheight()
+            w = min(width, int(sw * 0.95))
+            h = min(height, int(sh * 0.90))
+
             pw = parent.winfo_width()
             ph = parent.winfo_height()
             px = parent.winfo_rootx()
             py = parent.winfo_rooty()
-            x = px + max(0, (pw - width) // 2)
-            y = py + max(0, (ph - height) // 2)
-            self.geometry(f"{width}x{height}+{x}+{y}")
+
+            # Center relative to parent window
+            x = px + (pw - w) // 2
+            y = py + (ph - h) // 2
+
+            # Clamp to screen bounds
+            x = max(20, min(x, sw - w - 20))
+            y = max(20, min(y, sh - h - 40))
+
+            self.geometry(f"{w}x{h}+{x}+{y}")
         except Exception:
             self.geometry(f"{width}x{height}")
 
